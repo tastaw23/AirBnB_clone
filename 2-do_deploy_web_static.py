@@ -1,24 +1,38 @@
 #!/usr/bin/python3
-""" a Fabric script (based on the file 1-pack_web_static.py) that distributes..
-    ..an archive to your web servers, using the function do_deploy: """
-
+""" Fabric script (based on the file 2-do_deploy_web_static.py) that creates
+and distributes an archive to your web servers, using the function deploy: """
 
 from fabric.api import *
 from datetime import datetime
-from os.path import exists
-from fabric.exceptions import NetworkError
+from os.path import exists, basename, splitext
 
-env.hosts = ['35.237.166.125', '54.167.61.201']
+
+env.hosts = ['35.237.166.125', '54.167.61.201']  # <IP web-01>, <IP web-02>
+# ^ All remote commands must be executed on your both web servers
+# (using env.hosts = ['<IP web-01>', 'IP web-02'] variable in your script)
+
+
+def do_pack():
+    """generates a .tgz archive from the contents of the web_static folder
+    """
+    local("sudo mkdir -p versions")
+    date = datetime.now().strftime("%Y%m%d%H%M%S")
+    filename = "versions/web_static_{}.tgz".format(date)
+    result = local("sudo tar -cvzf {} web_static".format(filename))
+    if result.succeeded:
+        return filename
+    else:
+        return None
 
 
 def do_deploy(archive_path):
     """ distributes an archive to my web servers
     """
-    if exists(archive_path) is False:
-        return False
-
-    filename = archive_path.split('/')[-1]
-    no_tgz = '/data/web_static/releases/' + "{}".format(filename.split('.')[0])
+    if not exists(archive_path):
+        return False  # Returns False if the file at archive_path doesn't exist
+    
+    filename = basename(archive_path)
+    no_tgz = '/data/web_static/releases/' + splitext(filename)[0]
     tmp = "/tmp/" + filename
 
     try:
@@ -31,9 +45,16 @@ def do_deploy(archive_path):
         run("rm -rf /data/web_static/current")
         run("ln -s {}/ /data/web_static/current".format(no_tgz))
         return True
-    except NetworkError as e:
-        print("NetworkError: {}".format(e))
-        return False
     except Exception as e:
-        print("Error: {}".format(e))
+        print("Exception:", e)
         return False
+
+
+def deploy():
+    """ creates and distributes an archive to your web servers
+    """
+    new_archive_path = do_pack()
+    if not new_archive_path:
+        return False
+    result = do_deploy(new_archive_path)
+    return result
